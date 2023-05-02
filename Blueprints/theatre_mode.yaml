@@ -67,8 +67,8 @@ blueprint:
             
 variables:
   scene_uuid_dim: 'ebe235c62de111eda2610242ac120002'
-  scene_entities: "{{ state_attr(scene_playing,'entity_id') }}"
   scene_playing: !input scene_playing
+  scene_entities: "{{ state_attr(scene_playing,'entity_id') }}"
   media_player: !input media_player
 
 trigger:
