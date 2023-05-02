@@ -118,7 +118,7 @@ trigger:
 condition:
   - condition: state
     entity_id: media_player.shield
-    attribute: source
+    attribute: app_name
     state: !input apps
  
 action:
