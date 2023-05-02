@@ -54,7 +54,7 @@ blueprint:
           
     apps:
       name: Apps
-      description: (Optional) Scenes will only be activated, once the chosen Apps are running on the media player (ATV only)
+      description: Scenes will only be activated, once the chosen Apps are running on the media player
       selector:
         select:
           options:
@@ -116,16 +116,14 @@ trigger:
     for:
       seconds: !input reaction_time
  
-condition:
-  - condition: state
-    entity_id: media_player.shield
-    attribute: app_name
-    state: !input apps
- 
 action:
   - if:
     - condition: trigger
       id: create_scene
+    - condition: state
+      entity_id: media_player.shield
+      attribute: app_name
+      state: !input apps
     then:
     - service: scene.create
       data:
@@ -142,6 +140,10 @@ action:
   - if:
     - condition: trigger
       id: playing
+    - condition: state
+      entity_id: media_player.shield
+      attribute: app_name
+      state: !input apps
     then:
       - service: scene.turn_on
         data:
@@ -152,6 +154,10 @@ action:
   - if:
     - condition: trigger
       id: paused
+    - condition: state
+      entity_id: media_player.shield
+      attribute: app_name
+      state: !input apps
     then:
       - service: scene.turn_on
         data:
