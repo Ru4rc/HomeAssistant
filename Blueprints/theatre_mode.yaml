@@ -1,11 +1,10 @@
 blueprint:
   name: Theatre Mode
-  description: >
-    This blueprint lets you create an automation for your home theatre experience. Just define two scenes with the entities you want.
-    One for the playing and another for the paused state. The automation stores the states of the entities from the playing scene.
-    When your movie ended or you simply stop it the initial state of the entities will be restored. 
-    
-    Forked from [here](https://community.home-assistant.io/t/scene-based-theatre-mode/525457).
+  description: "This blueprint lets you create an automation for your home theatre experience.\n
+    It works by defining two scenes with the entities you want controlled. One for the playing state and another for the paused state.\n
+    The automation stores the states of the entities from the playing scene.\n
+    When the selected media player returns to a state other than paused the initial state of the entities will be restored.\n\n
+    Forked from [here](https://community.home-assistant.io/t/scene-based-theatre-mode/525457)."
   domain: automation
   input:
           
@@ -66,7 +65,7 @@ blueprint:
           mode: list
             
 variables:
-  scene_uuid_dim: 'ebe235c62de111eda2610242ac120002'
+  scene_uuid: 'theatre_mode_before'
   scene_playing: !input scene_playing
   scene_entities: "{{ state_attr(scene_playing,'entity_id') }}"
   media_player: !input media_player
@@ -127,7 +126,7 @@ action:
     then:
     - service: scene.create
       data:
-        scene_id: "{{ scene_uuid_dim }}"
+        scene_id: "{{ scene_uuid }}"
         snapshot_entities: "{{ scene_entities }}"
     - delay:
         seconds: 2
@@ -173,6 +172,6 @@ action:
         data:
           transition: !input transition
         target:
-          entity_id: "scene.{{ scene_uuid_dim }}"
+          entity_id: "scene.{{ scene_uuid }}"
 
 mode: queued
