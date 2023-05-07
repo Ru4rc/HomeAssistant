@@ -120,7 +120,7 @@ action:
     - condition: trigger
       id: create_scene
     - condition: state
-      entity_id: media_player.shield
+      entity_id: !input media_player
       attribute: app_name
       state: !input apps
     then:
@@ -140,7 +140,7 @@ action:
     - condition: trigger
       id: playing
     - condition: state
-      entity_id: media_player.shield
+      entity_id: !input media_player
       attribute: app_name
       state: !input apps
     then:
@@ -154,7 +154,7 @@ action:
     - condition: trigger
       id: paused
     - condition: state
-      entity_id: media_player.shield
+      entity_id: !input media_player
       attribute: app_name
       state: !input apps
     then:
