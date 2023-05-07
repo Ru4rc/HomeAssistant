@@ -3,7 +3,7 @@ blueprint:
   description: "Sync volume and source control between Sonos Connect and the receiver it's connected to.\n\n
     Forked from [here](https://community.home-assistant.io/t/sync-sonos-connect-amp-or-port-volume-and-source-with-your-receiver/358302)."
   domain: automation
-  source_url: https://gist.github.com/Qonstrukt/ca1e761b2ec0a2d52fdb8c86490fbcbd
+  source_url: https://github.com/Ru4rc/HomeAssistant/blob/main/Blueprints/sonos_connect_sync.yaml
   input:
     sonos_connect:
       name: Sonos
