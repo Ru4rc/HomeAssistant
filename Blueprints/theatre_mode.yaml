@@ -82,39 +82,35 @@ trigger:
       - "unavailable"
       - "buffering"
     to: "playing"
-    id: create_scene
     for:
       seconds: !input reaction_time
+    id: create_scene
       
   - platform: state
     entity_id: !input media_player
     from: "playing"
     to: "paused"
-    id: paused
     for:
       seconds: !input reaction_time
+    id: paused
       
-  - platform: state
+  - platform: state 
     entity_id: !input media_player
     to: "playing"
     from: "paused"
-    id: playing
     for:
       seconds: !input reaction_time
+    id: playing 
       
   - platform: state
     entity_id: !input media_player
-    to:
-      - "idle"
-      - "off"
-      - "stopped"
-      - "standby"
-      - "unknown"
-      - "unavailable"
-    id: stopped
+    attribute: app_name
+    from: !input apps
+    to: "None"
     for:
       seconds: !input reaction_time
- 
+    id: stopped
+    
 action:
   - if:
     - condition: trigger
@@ -167,6 +163,17 @@ action:
   - if:
     - condition: trigger
       id: stopped
+    - condition: state
+      entity_id: !input media_player
+      to:
+        - "idle"
+        - "off"
+        - "stopped"
+        - "standby"
+        - "unknown"
+        - "unavailable"
+      for: 
+        seconds: !input reaction_time
     then:
       - service: scene.turn_on
         data:
