@@ -165,15 +165,13 @@ action:
       id: stopped
     - condition: state
       entity_id: !input media_player
-      to:
+      state:
         - "idle"
         - "off"
         - "stopped"
         - "standby"
         - "unknown"
         - "unavailable"
-      for: 
-        seconds: !input reaction_time
     then:
       - service: scene.turn_on
         data:
