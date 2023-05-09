@@ -69,6 +69,7 @@ variables:
   scene_playing: !input scene_playing
   scene_entities: "{{ state_attr(scene_playing,'entity_id') }}"
   media_player: !input media_player
+  has_fired: false
 
 trigger:
   - platform: state
@@ -82,35 +83,39 @@ trigger:
       - "unavailable"
       - "buffering"
     to: "playing"
+    id: create_scene
     for:
       seconds: !input reaction_time
-    id: create_scene
       
   - platform: state
     entity_id: !input media_player
     from: "playing"
     to: "paused"
-    for:
-      seconds: !input reaction_time
     id: paused
-      
-  - platform: state 
-    entity_id: !input media_player
-    to: "playing"
-    from: "paused"
     for:
       seconds: !input reaction_time
-    id: playing 
       
   - platform: state
     entity_id: !input media_player
-    attribute: app_name
-    from: !input apps
-    to: "None"
+    to: "playing"
+    from: "paused"
+    id: playing
     for:
       seconds: !input reaction_time
+      
+  - platform: state
+    entity_id: !input media_player
+    to:
+      - "idle"
+      - "off"
+      - "stopped"
+      - "standby"
+      - "unknown"
+      - "unavailable"
     id: stopped
-    
+    for:
+      seconds: !input reaction_time
+ 
 action:
   - if:
     - condition: trigger
@@ -131,6 +136,10 @@ action:
         transition: !input transition
       target:
         entity_id: !input scene_playing
+    - service: input_boolean.turn_on
+      target:
+        has_fired
+      
 
   - if:
     - condition: trigger
@@ -145,6 +154,9 @@ action:
           transition: !input transition
         target:
           entity_id: !input scene_playing
+      - service: input_boolean.turn_on
+        target:
+          has_fired
 
   - if:
     - condition: trigger
@@ -159,24 +171,24 @@ action:
           transition: !input transition
         target:
           entity_id: !input scene_paused
+      - service: input_boolean.turn_on
+        target:
+          has_fired
 
   - if:
     - condition: trigger
       id: stopped
-    - condition: state
-      entity_id: !input media_player
-      state:
-        - "idle"
-        - "off"
-        - "stopped"
-        - "standby"
-        - "unknown"
-        - "unavailable"
+    -condition: state
+      entity_id: has_fired
+      state: true
     then:
       - service: scene.turn_on
         data:
           transition: !input transition
         target:
           entity_id: "scene.{{ scene_uuid }}"
+      - service: input_boolean.turn_off
+        target:
+          has_fired
 
 mode: queued
