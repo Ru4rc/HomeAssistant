@@ -98,9 +98,8 @@ action:
   - choose:
     - alias: "Switch receiver source"
       conditions:
-        - condition: template
-          value_template: >
-            {{ trigger.id == "sonos_playing" }}
+        - condition: trigger
+          id: sonos_playing
         - condition: template
           value_template: >
             {{ receiver_current_source != receiver_target_source }}
@@ -121,9 +120,8 @@ action:
 
     - alias: "Turn off receiver"
       conditions:
-        - condition: template
-          value_template: >
-            {{ trigger.id == "sonos_paused" }}
+        - condition: trigger
+          id: sonos_paused
         - condition: template
           value_template: >
             {{ receiver_current_source == receiver_target_source }}
@@ -133,18 +131,16 @@ action:
 
     - alias: "Switch Sonos playing state"
       conditions:
-        - condition: template
-          value_template: >
-            {{ trigger.id == "receiver_source_changed" }}
+        - condition: trigger
+          id: receiver_source_changed
       sequence:
         - service: media_player.media_pause
           entity_id: !input sonos_connect
 
     - alias: "Change receiver volume"
       conditions:
-        - condition: template
-          value_template: >
-            {{ trigger.id == "sonos_volume" }}
+        - condition: trigger
+          id: sonos_volume
         - condition: template
           value_template: >
             {{ sync_volume }}
@@ -163,9 +159,8 @@ action:
 
     - alias: "Change Sonos volume"
       conditions:
-        - condition: template
-          value_template: >
-            {{ trigger.id == "receiver_volume" }}
+        - condition: trigger
+          id: receiver_volume
         - condition: template
           value_template: >
             {{ sync_volume }}
@@ -181,3 +176,4 @@ action:
           data:
             volume_level: >
               {{ trigger.to_state.attributes["volume_level"] }}
+              
