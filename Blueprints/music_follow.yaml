@@ -214,13 +214,20 @@ action:
                      | list %}
                 {{ mapping_dict[occupied[0]] }}
 
-      # When presence sensor turns on and master player is playing, join the player of the now occupied room
+      # When presence sensor turns on and master player is playing, join the player of the now occupied room but only if the target room's player is not the master itself and if it's not already grouped with the master
       - conditions:
           - condition: trigger
             id: sensor_on
           - condition: template
             value_template: >
               {{ states(states(master_player_helper)) == 'playing' }}
+          - condition: template
+            value_template: >
+              {% set mapping_dict = mapping %}
+              {% set master = states(master_player_helper) %}
+              {% set new_player = mapping_dict[trigger.entity_id] %}
+              {% set master_group = state_attr(master, 'group_members') | default([]) %}
+              {{ new_player != master and new_player not in master_group }}
         sequence:
           - service: media_player.join
             data:
