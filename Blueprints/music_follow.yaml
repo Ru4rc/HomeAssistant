@@ -1,33 +1,37 @@
 blueprint:
-  name: 🎵 Music Follow (Sonos) – Presence-based Grouping of speakers
+  name: 🎵 Music Follow (Sonos) – Presence-Based Grouping Of Speakers
   description: |
     <details>
       <summary><b>What does this blueprint do?</b></summary>
       <p>
-        <strong>Music Follow</strong> automatically groups your Sonos speakers to follow you as you move through your home.<br>
-        When you enter a room, the music seamlessly joins you there. When you leave, it unjoins.<br>
+        <strong>Music Follow</strong> automatically groups and ungroups Sonos speakers based on your room presence.
+        <br><br>
+        When you enter a room, the corresponding speaker joins the active playback. When you leave, it unjoins after a configurable delay.
+        <br>
+        Optionally, you can set the volume of a speaker to a fixed value after its room has been empty for a certain period. This helps prevent blasting music at full volume when you enter a room in which you might have had a party earlier.
       </p>
     </details>
+
     <details>
       <summary><b>How to use</b></summary>
       <ul>
-        <li>Select all Sonos media players you want to include.</li>
-        <li>Choose your presence sensors (one per room).</li>
-        <li>Set your master player helper (an <code>input_text</code> entity).</li>
-        <li>Optionally, enable a toggle helper (an <code>input_boolean</code> to turn the automation on/off).</li>
-        <li>Set custom delay durations for presence triggers.</li>
-        <li>Optionally, specify a volume and delay for lowering the volume after a room is vacated.</li>
+        <li>Select your Sonos speakers and the corresponding room presence sensors.</li>
+        <li>⚠️ Ensure the order of the sensors matches the order of the speakers.</li>
+        <li>Optionally, specify a volume level and delay for setting the volume after a room is vacated.</li>
       </ul>
     </details>
+
     ---
-    <i>Tip: Only Sonos players will show up for selection. You can use any type of binary presence sensor.</i>
+    <i>Tip: Only Sonos players will show up for selection. You can use any type of binary sensor (helpers included) for presence detection.<br>
+    Just make sure, that you have selected only one presence sensor per room.</i>
 
   domain: automation
   input:
     sonos_players:
       name: Sonos Media Players
       description: >
-        Select all Sonos media players you want to include in the music-follow group.
+        Select all Sonos media players you want this automation to control.<br>
+        Match the order with the presence sensors below.
       selector:
         entity:
           multiple: true
@@ -38,43 +42,17 @@ blueprint:
     presence_sensors:
       name: Presence Sensors
       description: >
-        Select presence sensors for each room.<br>
-        ⚠️ <b>Important: You MUST match the order of the sensors based on the order of the media players above. Otherwise the mapping will fail. </b>
+        Select binary presence sensors for each room.<br>
+        ⚠️ The order must correspond to the Sonos players above.
       selector:
         entity:
           multiple: true
           domain: binary_sensor
 
-    master_player_helper:
-      name: Master Player Helper
-      description: >
-        Select an <code>input_text</code> helper to store the current master player.
-      selector:
-        entity:
-          domain: input_text
-
-    use_toggle_helper:
-      name: Enable Toggle Helper?
-      description: >
-        Would you like to use an <code>input_boolean</code> to enable/disable the automation?
-      default: false
-      selector:
-        boolean:
-
-    toggle_helper:
-      name: Toggle Helper (Optional)
-      description: >
-        Select your <code>input_boolean</code> toggle helper. Only needed if enabled above.
-      default: ""
-      selector:
-        entity:
-          domain: input_boolean
-          multiple: false
-
     presence_off_delay:
       name: Presence OFF Delay (seconds)
       description: >
-        How long should a room be empty before unjoining the corresponding player? (default: 60 seconds)
+        Delay before a speaker unjoins after its room becomes empty.
       default: 60
       selector:
         number:
@@ -84,18 +62,19 @@ blueprint:
           unit_of_measurement: seconds
           mode: slider
 
-    lower_volume_enabled:
-      name: Lower Volume When Room Empty?
+    set_volume_enabled:
+      name: Set Volume When Room Empty?
       description: >
-        Enable to automatically set the volume of a player after a room has been empty for a set time.
+        If enabled, the volume of the speaker in the empty room will be set to a defined level after a delay.
       default: false
       selector:
         boolean:
 
-    lower_volume_level:
-      name: Volume Level After Room Empty
+    set_volume_level:
+      name: Volume Level to Set
       description: >
-        What volume level (0.0 - 1.0) should the player be set to after the room is empty? (default: 0.2)
+        Target volume level (0.0 - 1.0) to set for speakers in vacated rooms.
+        Only used if the volume-setting option is enabled.
       default: 0.2
       selector:
         number:
@@ -104,10 +83,11 @@ blueprint:
           step: 0.01
           mode: slider
 
-    lower_volume_delay:
-      name: Delay Before Lowering Volume (seconds)
+    set_volume_delay:
+      name: Delay Before Setting Volume (seconds)
       description: >
-        How long after the room is empty should the volume be lowered? (default: 300 seconds = 5 minutes)
+        How long after the room is empty should the volume be set?
+        Applies only if volume setting is enabled.
       default: 300
       selector:
         number:
@@ -117,126 +97,85 @@ blueprint:
           unit_of_measurement: seconds
           mode: slider
 
-mode: parallel
-max_exceeded: silent
+mode: queued
+max: 10
 
 variables:
   sonos_players: !input sonos_players
   presence_sensors: !input presence_sensors
-  master_player_helper: !input master_player_helper
-  use_toggle: !input use_toggle_helper
-  toggle_entity: !input toggle_helper
-  mapping: |
+
+  # Map each presence sensor to its corresponding speaker
+  mapping: >
     {% set sensors = presence_sensors %}
     {% set players = sonos_players %}
     {{ dict(zip(sensors, players)) }}
-  lower_volume_enabled: !input lower_volume_enabled
-  lower_volume_level: !input lower_volume_level
+
+  set_volume_enabled: !input set_volume_enabled
+  set_volume_level: !input set_volume_level
+
+  # Dynamically determine the current master player (first one playing)
+  master_player: >
+    {% set playing = expand(sonos_players) | selectattr('state', 'eq', 'playing') | list %}
+    {{ playing[0].entity_id if playing | length > 0 else None }}
 
 trigger:
-  # Trigger when any Sonos player starts playing
+  # Trigger when any Sonos starts playing
   - platform: state
     entity_id: !input sonos_players
     to: 'playing'
     id: media_player_playing
 
-  # Trigger when any presence sensor turns on
+  # Trigger when someone enters a room
   - platform: state
     entity_id: !input presence_sensors
     to: 'on'
     id: sensor_on
 
-  # Trigger when any presence sensor turns off
+  # Trigger when someone leaves a room
   - platform: state
     entity_id: !input presence_sensors
     to: 'off'
     id: sensor_off
 
-  # Trigger when any presence sensor turns off (delayed)
+  # Trigger when room has been empty for a delay (for unjoining)
   - platform: state
     entity_id: !input presence_sensors
     to: 'off'
-    id: sensor_off_delayed
     for:
       seconds: !input presence_off_delay
+    id: sensor_off_delayed
 
-  # Trigger for lowering volume after room empty
+  # Trigger when room has been empty for a delay (for setting volume)
   - platform: state
     entity_id: !input presence_sensors
     to: 'off'
-    id: lower_volume
     for:
-      seconds: !input lower_volume_delay
-
-condition:
-  - condition: template
-    value_template: >
-      {{ not use_toggle or is_state(toggle_entity, 'on') }}
-
+      seconds: !input set_volume_delay
+    id: set_volume
 
 action:
   - choose:
-      # When music starts playing, set master player if only one is playing
-      - conditions:
-          - condition: trigger
-            id: media_player_playing
-          - condition: template
-            value_template: >
-              {{ expand(sonos_players) | selectattr('state', 'eq', 'playing') | list | length == 1 }}
-        sequence:
-          - service: input_text.set_value
-            target:
-              entity_id: "{{ master_player_helper }}"
-            data:
-              value: "{{ trigger.entity_id }}"
-
-      # When presence of a room switches to off, check if only one room is occupied and update master player accordingly
-      - conditions:
-          - condition: trigger
-            id: sensor_off
-          - condition: template
-            value_template: >
-              {% set mapping_dict = mapping %}
-              {% set current_master = states(master_player_helper) %}
-              {% set occupied = presence_sensors
-                   | select('is_state', 'on')
-                   | list %}
-              {{ occupied | length == 1 and mapping_dict[occupied[0]] != current_master }}
-        sequence:
-          - service: input_text.set_value
-            target:
-              entity_id: "{{ master_player_helper }}"
-            data:
-              value: >
-                {% set mapping_dict = mapping %}
-                {% set occupied = presence_sensors
-                     | select('is_state', 'on')
-                     | list %}
-                {{ mapping_dict[occupied[0]] }}
-
-      # When presence sensor turns on and master player is playing, join the player of the now occupied room but only if the target room's player is not the master itself and if it's not already grouped with the master
+      # ➕ JOIN speaker to master when presence is detected
       - conditions:
           - condition: trigger
             id: sensor_on
           - condition: template
-            value_template: >
-              {{ states(states(master_player_helper)) == 'playing' }}
+            value_template: "{{ states(master_player) == 'playing' }}"
           - condition: template
             value_template: >
               {% set mapping_dict = mapping %}
-              {% set master = states(master_player_helper) %}
               {% set new_player = mapping_dict[trigger.entity_id] %}
-              {% set master_group = state_attr(master, 'group_members') | default([]) %}
-              {{ new_player != master and new_player not in master_group }}
+              {% set group = state_attr(master_player, 'group_members') | default([]) %}
+              {{ new_player != master_player and new_player not in group }}
         sequence:
           - service: media_player.join
             data:
-              entity_id: "{{ states(master_player_helper) }}"
+              entity_id: "{{ master_player }}"
               group_members: >
                 {% set mapping_dict = mapping %}
                 {{ mapping_dict[trigger.entity_id] }}
 
-      # When presence sensor turns off, unjoin that player
+      # ➖ UNJOIN speaker when room is empty for a while
       - conditions:
           - condition: trigger
             id: sensor_off_delayed
@@ -247,12 +186,12 @@ action:
                 {% set mapping_dict = mapping %}
                 {{ mapping_dict[trigger.entity_id] }}
 
-      # Lower volume after room empty for specified time
+      # 🔉 SET VOLUME when room is empty after delay
       - conditions:
           - condition: trigger
-            id: lower_volume
+            id: set_volume
           - condition: template
-            value_template: "{{ lower_volume_enabled }}"
+            value_template: "{{ set_volume_enabled }}"
         sequence:
           - service: media_player.volume_set
             target:
@@ -260,5 +199,5 @@ action:
                 {% set mapping_dict = mapping %}
                 {{ mapping_dict[trigger.entity_id] }}
             data:
-              volume_level: "{{ lower_volume_level }}"
+              volume_level: "{{ set_volume_level }}"
     default: []
