@@ -6,25 +6,33 @@ blueprint:
   source_url: https://github.com/Ru4rc/HomeAssistant/blob/main/Blueprints/sonos_connect_sync.yaml
   input:
     sonos_connect:
-      name: Sonos
+      name: Sonos Connect
+      description: Select your Sonos Connect media player
       selector:
         entity:
           integration: sonos
           domain: media_player
     receiver:
       name: Receiver
+      description: Select your A/V Receiver
       selector:
         entity:
           domain: media_player
     receiver_source:
       name: Receiver source name
-      description: The source name of the receiver associated with your Sonos.
+      description: The source name of the receiver associated with your Sonos Connect.
       default: Sonos
       selector:
         text:
+    auto_turn_off:
+      name: Auto turn off receiver
+      description: Toggle whether the receiver should turn off automatically after playback stops.
+      default: false
+      selector:
+        boolean:
     turn_off_delay:
       name: Receiver turn off delay
-      description: Delay before the receiver will turn off after Sonos stopped playing.
+      description: If set above, specify a delay before the receiver will turn off after the Sonos Connect stopped playing.
       default: 300
       selector:
         number:
@@ -33,13 +41,13 @@ blueprint:
           unit_of_measurement: seconds
     sync_volume:
       name: Synchronise volume
-      description: Synchronise volume between Sonos and Receiver.
+      description: Toggle wether the volume between the Sonos Connect and the A/V Receiver should be synchronized.
       default: true
       selector:
         boolean:
     sync_volume_buffer_time:
       name: Buffer time between sync
-      description: Time to wait before synchronizing the volume between devices.
+      description: Time to wait before synchronizing the volume between devices. Helps with debouncing.
       default: 1000
       selector:
         number:
@@ -60,6 +68,8 @@ variables:
   sonos_current_volume: >
     {{ state_attr(sonos_entity, 'volume_level')|float(0) }}
   sync_volume: !input sync_volume
+  auto_turn_off: !input auto_turn_off
+
 
 trigger:
   - platform: state
@@ -124,7 +134,7 @@ action:
           id: sonos_paused
         - condition: template
           value_template: >
-            {{ receiver_current_source == receiver_target_source }}
+            {{ auto_turn_off and receiver_current_source == receiver_target_source }}
       sequence:
         - service: media_player.turn_off
           entity_id: !input receiver
@@ -176,4 +186,3 @@ action:
           data:
             volume_level: >
               {{ trigger.to_state.attributes["volume_level"] }}
-              
