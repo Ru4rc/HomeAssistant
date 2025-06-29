@@ -208,73 +208,98 @@ action:
                 {% set occupied = presence_sensors | select('is_state', 'on') | list %}
                 {{ mapping_dict[occupied[0]] }}
 
-      # When a presence sensor turns ON (someone enters a room):
-      # - If the current master player is playing or paused:
-      #   - If the newly occupied room's player is NOT the master AND it's the only occupied room:
-      #     → Make it the new master (this avoids wrong master selection during quick transitions).
-      #   - If the player is not already grouped with the master:
-      #     → Join the new room's player to the master's group (for seamless playback).
+      # When a presence sensor turns ON:
       - conditions:
+          # Only run if the trigger was a presence sensor turning on
           - condition: trigger
             id: sensor_on
+
+          # Only continue if the current master player is playing or paused
           - condition: template
             value_template: >
               {{ states(states(master_player_helper)) in ['playing', 'paused'] }}
+
         sequence:
           - variables:
-              mapping_dict: "{{ mapping }}"
-              master: "{{ states(master_player_helper) }}"
-              new_player: "{{ mapping[trigger.entity_id] }}"
-              current_group: "{{ state_attr(master, 'group_members') or [master] }}"
-              all_occupied: "{{ presence_sensors | select('is_state', 'on') | list }}"
+              # Build useful variables for this step
+              mapping_dict: "{{ mapping }}"  # Mapping of presence sensors to Sonos players
+              master: "{{ states(master_player_helper) }}"  # Current master player
+              new_player: "{{ mapping[trigger.entity_id] }}"  # Player for the room just entered
+              current_group: "{{ state_attr(master, 'group_members') or [master] }}"  # Current speaker group
+              all_occupied: "{{ presence_sensors | select('is_state', 'on') | list }}"  # List of currently occupied rooms
               master_sensor: >
+                # Find which presence sensor maps to the current master player
                 {{ mapping_dict | dictsort(false)
                                 | selectattr('1', 'equalto', master)
                                 | map(attribute='0')
                                 | list | first }}
+
+          # Extra check: skip if the new player is currently playing TV audio (don’t join TV inputs)
           - if:
               - condition: template
                 value_template: >
                   {{ state_attr(new_player, 'media_content_type') != 'tv' }}
             then:
-          - if:
-              - condition: template
-                value_template: >
-                  {{ trigger.entity_id != master_sensor and
-                     all_occupied | length == 1 }}
-            then:
-              - delay:
-                  seconds: 2
-              - service: input_text.set_value
-                target:
-                  entity_id: "{{ master_player_helper }}"
-                data:
-                  value: "{{ new_player }}"
-          - if:
-              - condition: template
-                value_template: >
-                  {{ new_player not in current_group }}
-            then:
-              - service: media_player.join
-                data:
-                  entity_id: "{{ master }}"
-                  group_members: "{{ [new_player] }}"
-              - wait_template: "{{ new_player in state_attr(master, 'group_members') }}"
-                timeout:
-                  seconds: 10
-                continue_on_timeout: true
+              # If you moved into a new room AND that room is now the only occupied room:
+              # → Make that room's player the new master.
               - if:
                   - condition: template
                     value_template: >
-                      {{ new_player not in state_attr(master, 'group_members') }}
+                      {{ trigger.entity_id != master_sensor and
+                         all_occupied | length == 1 }}
                 then:
-                  - service: persistent_notification.create
-                    data:
-                      title: "Music Follow - Sonos Join-Timeout"
-                      message: >
-                        {{ new_player }} couldn't join the speaker group of {{ master }}.
+                  # Wait briefly to avoid flickering presence states during quick transitions
+                  - delay:
+                      seconds: 2
 
-      # When presence sensor turns off (after delay), unjoin that player (only if not the master)
+                  # Update the master player helper to the newly occupied player
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ master_player_helper }}"
+                    data:
+                      value: "{{ new_player }}"
+
+              # If the new room’s player is not already part of the master group:
+              # → Join it to the group to continue playback in that room.
+              - if:
+                  - condition: template
+                    value_template: >
+                      {{ new_player not in current_group }}
+                then:
+                  # Join new player to master group
+                  - service: media_player.join
+                    data:
+                      entity_id: "{{ master }}"
+                      group_members: "{{ [new_player] }}"
+
+                  # Wait up to 10 seconds for the player to appear in the master’s group_members
+                  - wait_template: "{{ new_player in state_attr(master, 'group_members') }}"
+                    timeout: 10
+                    continue_on_timeout: true
+
+                  # Notify if join failed (player didn’t show up in group_members)
+                  - if:
+                      - condition: template
+                        value_template: >
+                          {{ new_player not in state_attr(master, 'group_members') }}
+                    then:
+                      - service: persistent_notification.create
+                        data:
+                          title: "Music Follow - Sonos Join-Timeout"
+                          message: >
+                            {{ new_player }} couldn't join the speaker group of {{ master }}.
+
+                  # If the master is playing but the newly joined player is not,
+                  # force the new player to start playback so it doesn’t stay silent.
+                  - if:
+                      - condition: template
+                        value_template: >
+                          {{ states(master) == 'playing' and states(new_player) != 'playing' }}
+                    then:
+                      - service: media_player.media_play
+                        target:
+                          entity_id: "{{ new_player }}"
+
       - conditions:
           - condition: trigger
             id: sensor_off_delayed
