@@ -1,32 +1,34 @@
 blueprint:
-  name: 🎵 Music Follow (Sonos) – Presence-based Grouping of speakers
+  name: Sonos Music Follow – Dynamic Speaker Grouping based on Room Presence
   description: |
-    <details>
-      <summary><b>What does this blueprint do?</b></summary>
-      <p>
-        <strong>Music Follow</strong> automatically groups your Sonos speakers to follow you as you move through your home.<br>
-        When you enter a room, the music seamlessly joins you there. When you leave, it unjoins.<br>
-      </p>
-    </details>
-    <details>
-      <summary><b>How to use</b></summary>
-      <ul>
-        <li>Select all Sonos media players you want to include.</li>
-        <li>Choose your presence sensors (one per room).</li>
-        <li>Set your master player helper (an <code>input_text</code> entity).</li>
-        <li>Optionally, enable a toggle helper (an <code>input_boolean</code> to turn the automation on/off).</li>
-        <li>Set custom delay durations for presence triggers.</li>
-        <li>Optionally, specify a volume and delay for lowering the volume after a room is vacated.</li>
-      </ul>
-    </details>
+    🔊 **Automatically have your Sonos speakers follow you from room to room!**
+
+    This blueprint intelligently groups and ungroups your selected Sonos speakers based on where you are in your home.
+
+    - 🏠 When you enter a room, that room’s speaker joins the active music group.
+    - 🚪 When you leave a room, its speaker unjoins after a delay.
+    - 🔇 If you leave the room of your **master speaker**, it will mute itself instead of unjoining — keeping your queue alive!
+    - 📺 Players currently playing TV audio will never be grouped, so you won’t accidentally merge your TV and music.
+    - 💤 When all presence sensors show nobody home for a while, playback stops and the group resets.
+    - 🔁 If all players have stopped playing for a while, the group resets automatically and the master unmutes.
+
     ---
-    <i>Tip: Only Sonos players will show up for selection. You can use any type of binary presence sensor.</i>
+    <details>
+    <summary><b>🛠 How it works</b></summary>
+
+    - Select your Sonos speakers and match them with one presence sensor each.
+    - Use an `input_text` helper to store the master player.
+    - Optionally set delays for unjoining, volume lowering, and group reset.
+    </details>
+
   domain: automation
+
   input:
     sonos_players:
-      name: Sonos Media Players
+      name: 🎶 Sonos Speakers
       description: >
-        Select all Sonos media players you want to include in the music-follow group.
+        Select **all Sonos speakers** you want to include.
+        Each speaker must have a matching presence sensor below.
       selector:
         entity:
           multiple: true
@@ -35,86 +37,112 @@ blueprint:
               domain: media_player
 
     presence_sensors:
-      name: Presence Sensors
+      name: 🚪 Room Presence Sensors
       description: >
-        Select presence sensors for each room.<br>
-        ⚠️ <b>Important: You MUST match the order of the sensors based on the order of the media players above. Otherwise the mapping will fail. </b>
+        Select one presence sensor per room, matching the order of your speakers above.
       selector:
         entity:
           multiple: true
           domain: binary_sensor
 
     master_player_helper:
-      name: Master Player Helper
+      name: 🗂️ Master Player Helper (`input_text`)
       description: >
-        Select an <code>input_text</code> helper to store the current master player.
+        Select an `input_text` helper to store the current master speaker.
       selector:
         entity:
           domain: input_text
 
     use_toggle_helper:
-      name: Enable Toggle Helper? (Optional)
+      name: ✅ Enable Toggle Helper?
       description: >
-        Would you like to use an <code>input_boolean</code> to enable/disable the automation?
+        Use this if you want an `input_boolean` to enable/disable the automation.
       default: false
       selector:
         boolean:
 
     toggle_helper:
-      name: Toggle Helper (Optional)
+      name: 🕹️ Toggle Helper (`input_boolean`)
       description: >
-        Select your <code>input_boolean</code> toggle helper. Only needed if enabled above.
+        Select the toggle helper here if enabled above.
       default: ""
       selector:
         entity:
           domain: input_boolean
-          multiple: false
 
     presence_off_delay:
-      name: Presence OFF Delay
+      name: ⏲️ Room Vacant Delay (seconds)
       description: >
-        How long should a room be empty before unjoining the corresponding player? (default: 60 seconds)
-      default: 60
+        How long a room should stay empty before unjoining its speaker.
+      default: 30
       selector:
         number:
           min: 0
           max: 600
-          step: 1
           unit_of_measurement: seconds
-          mode: slider
 
-    lower_volume_enabled:
-      name: Reset Volume When Room Empty? (Optional)
+    all_rooms_off_delay:
+      name: 💤 Whole House Vacant Delay (seconds)
       description: >
-        Enable to automatically set the volume of a player after a room has been empty for a set time.
+        How long all sensors must be off before stopping playback.
+      default: 60
+      selector:
+        number:
+          min: 0
+          max: 1800
+          unit_of_measurement: seconds
+
+    set_volume_enabled:
+      name: 🔉 Set Volume for empty rooms?
+      description: >
+        If enabled, the speakers will be set to a given volume level after a room has been empty for a set amount of time.
       default: false
       selector:
         boolean:
 
-    lower_volume_level:
-      name: Volume Level After Room Empty (Optional)
+    set_volume_level:
+      name: 🎚️ Volume Level After Room Empty
       description: >
-        What volume level (0.0 - 1.0) should the player be set to after the room is empty? (default: 0.2)
+        What volume (0.0–1.0) to set for speakers after room is empty.
       default: 0.2
       selector:
         number:
           min: 0
           max: 1
           step: 0.01
-          mode: slider
 
-    lower_volume_delay:
-      name: Delay Before Resetting Volume
+    set_volume_delay:
+      name: ⏳ Delay Before Setting Volume (seconds)
       description: >
-        How long after the room is empty should the volume be set? (default: 300 seconds = 5 minutes)
+        How long to wait before setting the volume for a vacated room.
       default: 300
       selector:
         number:
           min: 10
           max: 3600
-          step: 1
           unit_of_measurement: seconds
-          mode: slider
+
+    pause_reset_delay:
+      name: ⏹️ Pause Reset Delay (seconds)
+      description: >
+        How long the master speaker must remain paused before resetting the group and clearing the master.
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 600
+          unit_of_measurement: seconds
+
+    group_reset_delay:
+      name: ⏲️ Group Reset Delay (seconds)
+      description: >
+        How long after all players stop should the group reset and master unmute.
+      default: 120
+      selector:
+        number:
+          min: 10
+          max: 1800
+          unit_of_measurement: seconds
 
 mode: queued
 max: 10
@@ -129,8 +157,8 @@ variables:
     {% set sensors = presence_sensors %}
     {% set players = sonos_players %}
     {{ dict(zip(sensors, players)) }}
-  lower_volume_enabled: !input lower_volume_enabled
-  lower_volume_level: !input lower_volume_level
+  set_volume_enabled: !input set_volume_enabled
+  set_volume_level: !input set_volume_level
 
 trigger:
   # Trigger when any Sonos player starts playing
@@ -139,19 +167,19 @@ trigger:
     to: 'playing'
     id: media_player_playing
 
-  # Trigger when any presence sensor turns on
+  # When any presence sensor turns ON
   - platform: state
     entity_id: !input presence_sensors
     to: 'on'
     id: sensor_on
 
-  # Trigger when any presence sensor turns off
+  # When any presence sensor turns OFF
   - platform: state
     entity_id: !input presence_sensors
     to: 'off'
     id: sensor_off
 
-  # Trigger when any presence sensor turns off (delayed)
+  # When any sensor stays OFF for presence_off_delay
   - platform: state
     entity_id: !input presence_sensors
     to: 'off'
@@ -159,28 +187,52 @@ trigger:
       seconds: !input presence_off_delay
     id: sensor_off_delayed
 
-  # Trigger for lowering volume after room empty
+  # When all sensors OFF for whole house vacant delay
   - platform: state
     entity_id: !input presence_sensors
     to: 'off'
     for:
-      seconds: !input lower_volume_delay
-    id: lower_volume
+      seconds: !input all_rooms_off_delay
+    id: all_rooms_off_delayed
+
+  # Optional: set volume after room empty for set_volume_delay
+  - platform: state
+    entity_id: !input presence_sensors
+    to: 'off'
+    for:
+      seconds: !input set_volume_delay
+    id: set_volume
+    
+  # When master has been paused for x seconds → reset group
+  - platform: state
+    entity_id: !input sonos_players
+    to: 'paused'
+    for:
+      seconds: !input pause_reset_delay
+    id: paused_delayed
+
+  # When all players are not playing anymore, reset group after given delay
+  - platform: template
+    value_template: >
+      {% set inactive_states = ['idle', 'off', 'paused'] %}
+      {% set inactive_players = expand(sonos_players) | selectattr('state', 'in', inactive_states) | list %}
+      {{ inactive_players | length == sonos_players | length }}
+    for:
+      seconds: !input group_reset_delay
+    id: group_reset
 
 condition:
   - condition: template
-    value_template: >
-      {{ not use_toggle or is_state(toggle_entity, 'on') }}
+    value_template: "{{ not use_toggle or is_state(toggle_entity, 'on') }}"
 
 action:
   - choose:
-      # When music starts playing, set master player if only one is playing
+      # When only one player starts playing → set master
       - conditions:
           - condition: trigger
             id: media_player_playing
           - condition: template
-            value_template: >
-              {{ expand(sonos_players) | selectattr('state', 'eq', 'playing') | list | length == 1 }}
+            value_template: "{{ expand(sonos_players) | selectattr('state', 'eq', 'playing') | list | length == 1 }}"
         sequence:
           - service: input_text.set_value
             target:
@@ -188,118 +240,89 @@ action:
             data:
               value: "{{ trigger.entity_id }}"
 
-      # When presence of a room switches to off, check if only one room is occupied and update master player accordingly
+      # When all rooms empty → stop master
       - conditions:
           - condition: trigger
-            id: sensor_off
+            id: all_rooms_off_delayed
           - condition: template
-            value_template: >
-              {% set mapping_dict = mapping %}
-              {% set current_master = states(master_player_helper) %}
-              {% set occupied = presence_sensors | select('is_state', 'on') | list %}
-              {{ occupied | length == 1 and mapping_dict[occupied[0]] != current_master }}
+            value_template: "{{ presence_sensors | select('is_state', 'on') | list | length == 0 }}"
         sequence:
+          - service: media_player.media_stop
+            target:
+              entity_id: "{{ states(master_player_helper) }}"
           - service: input_text.set_value
             target:
               entity_id: "{{ master_player_helper }}"
             data:
-              value: >
-                {% set mapping_dict = mapping %}
-                {% set occupied = presence_sensors | select('is_state', 'on') | list %}
-                {{ mapping_dict[occupied[0]] }}
+              value: ""
 
-      # When a presence sensor turns ON:
+      # Master room empty → mute master
       - conditions:
-          # Only run if the trigger was a presence sensor turning on
           - condition: trigger
-            id: sensor_on
-
-          # Only continue if the current master player is playing or paused
+            id: sensor_off_delayed
           - condition: template
             value_template: >
-              {{ states(states(master_player_helper)) in ['playing', 'paused'] }}
+              {% set mapping_dict = mapping %}
+              {% set player = mapping_dict[trigger.entity_id] %}
+              {% set master = states(master_player_helper) %}
+              {{ player == master }}
+        sequence:
+          - service: media_player.volume_mute
+            target:
+              entity_id: "{{ states(master_player_helper) }}"
+            data:
+              is_volume_muted: true
 
+      # Master room occupied → unmute master
+      - conditions:
+          - condition: trigger
+            id: sensor_on
+          - condition: template
+            value_template: >
+              {% set mapping_dict = mapping %}
+              {% set player = mapping_dict[trigger.entity_id] %}
+              {% set master = states(master_player_helper) %}
+              {{ player == master }}
+        sequence:
+          - service: media_player.volume_mute
+            target:
+              entity_id: "{{ states(master_player_helper) }}"
+            data:
+              is_volume_muted: false
+
+      # Non-master room occupied → join to master if needed
+      - conditions:
+          - condition: trigger
+            id: sensor_on
+          - condition: template
+            value_template: >
+              {% set mapping_dict = mapping %}
+              {% set player = mapping_dict[trigger.entity_id] %}
+              {% set master = states(master_player_helper) %}
+              {{ player != master and states(master) in ['playing', 'paused'] }}
         sequence:
           - variables:
-              # Build useful variables for this step
-              mapping_dict: "{{ mapping }}"  # Mapping of presence sensors to Sonos players
-              master: "{{ states(master_player_helper) }}"  # Current master player
-              new_player: "{{ mapping[trigger.entity_id] }}"  # Player for the room just entered
-              current_group: "{{ state_attr(master, 'group_members') or [master] }}"  # Current speaker group
-              all_occupied: "{{ presence_sensors | select('is_state', 'on') | list }}"  # List of currently occupied rooms
-              master_sensor: >
-                # Find which presence sensor maps to the current master player
-                {{ mapping_dict | dictsort(false)
-                                | selectattr('1', 'equalto', master)
-                                | map(attribute='0')
-                                | list | first }}
-
-          # Extra check: skip if the new player is currently playing TV audio (don’t join TV inputs)
+              mapping_dict: "{{ mapping }}"
+              master: "{{ states(master_player_helper) }}"
+              new_player: "{{ mapping[trigger.entity_id] }}"
+              current_group: "{{ state_attr(master, 'group_members') or [master] }}"
           - if:
               - condition: template
-                value_template: >
-                  {{ state_attr(new_player, 'media_content_type') != 'tv' }}
+                value_template: "{{ new_player not in current_group }}"
             then:
-              # If you moved into a new room AND that room is now the only occupied room:
-              # → Make that room's player the new master.
               - if:
                   - condition: template
-                    value_template: >
-                      {{ trigger.entity_id != master_sensor and
-                         all_occupied | length == 1 }}
+                    value_template: "{{ state_attr(new_player, 'media_content_type') != 'tv' }}"
                 then:
-                  # Wait briefly to avoid flickering presence states during quick transitions
-                  - delay:
-                      seconds: 2
-
-                  # Update the master player helper to the newly occupied player
-                  - service: input_text.set_value
-                    target:
-                      entity_id: "{{ master_player_helper }}"
-                    data:
-                      value: "{{ new_player }}"
-
-              # If the new room’s player is not already part of the master group:
-              # → Join it to the group to continue playback in that room.
-              - if:
-                  - condition: template
-                    value_template: >
-                      {{ new_player not in current_group }}
-                then:
-                  # Join new player to master group
                   - service: media_player.join
                     data:
                       entity_id: "{{ master }}"
                       group_members: "{{ [new_player] }}"
-
-                  # Wait up to 10 seconds for the player to appear in the master’s group_members
                   - wait_template: "{{ new_player in state_attr(master, 'group_members') }}"
                     timeout: 10
                     continue_on_timeout: true
 
-                  # Notify if join failed (player didn’t show up in group_members)
-                  - if:
-                      - condition: template
-                        value_template: >
-                          {{ new_player not in state_attr(master, 'group_members') }}
-                    then:
-                      - service: persistent_notification.create
-                        data:
-                          title: "Music Follow - Sonos Join-Timeout"
-                          message: >
-                            {{ new_player }} couldn't join the speaker group of {{ master }}.
-
-                  # If the master is playing but the newly joined player is not,
-                  # force the new player to start playback so it doesn’t stay silent.
-                  - if:
-                      - condition: template
-                        value_template: >
-                          {{ states(master) == 'playing' and states(new_player) != 'playing' }}
-                    then:
-                      - service: media_player.media_play
-                        target:
-                          entity_id: "{{ new_player }}"
-
+      # Non-master room empty → unjoin that player
       - conditions:
           - condition: trigger
             id: sensor_off_delayed
@@ -310,28 +333,16 @@ action:
               {% set master = states(master_player_helper) %}
               {{ player != master and player in (state_attr(master, 'group_members') or []) }}
         sequence:
-          - variables:
-              player: "{{ mapping[trigger.entity_id] }}"
           - service: media_player.unjoin
             target:
-              entity_id: "{{ player }}"
-          - delay: 2
-          - if:
-              - condition: template
-                value_template: "{{ player in state_attr(states(master_player_helper), 'group_members') }}"
-            then:
-              - service: persistent_notification.create
-                data:
-                  title: "Music Follow - Sonos Unjoin-Error"
-                  message: >
-                    {{ player }} couldn't be unjoined from current speaker group.
+              entity_id: "{{ mapping[trigger.entity_id] }}"
 
-      # Lower volume after room empty for specified time
+      # Optional: set volume after set_volume_level
       - conditions:
           - condition: trigger
-            id: lower_volume
+            id: set_volume
           - condition: template
-            value_template: "{{ lower_volume_enabled }}"
+            value_template: "{{ set_volume_enabled }}"
         sequence:
           - service: media_player.volume_set
             target:
@@ -339,5 +350,52 @@ action:
                 {% set mapping_dict = mapping %}
                 {{ mapping_dict[trigger.entity_id] }}
             data:
-              volume_level: "{{ lower_volume_level }}"
+              volume_level: "{{ set_volume_level }}"
+
+      # Master paused for too long → reset group
+      - conditions:
+          - condition: trigger
+            id: paused_delayed
+          - condition: template
+            value_template: >
+              {% set master = states(master_player_helper) %}
+              {{ trigger.entity_id == master }}
+        sequence:
+          - service: media_player.unjoin
+            target:
+              entity_id: >
+                {% set members = state_attr(trigger.entity_id, 'group_members') | default([]) %}
+                {{ members | reject('equalto', trigger.entity_id) | list }}
+          - service: media_player.volume_mute
+            target:
+              entity_id: !input sonos_players
+            data:
+              is_volume_muted: false
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ master_player_helper }}"
+            data:
+              value: ""
+
+      # All players idle/off for group_reset_delay → reset group
+      - conditions:
+          - condition: trigger
+            id: group_reset
+        sequence:
+          - service: media_player.unjoin
+            target:
+              entity_id: >
+                {% set master = states(master_player_helper) %}
+                {% set members = state_attr(master, 'group_members') | default([]) %}
+                {{ members | reject('equalto', master) | list }}
+          - service: media_player.volume_mute
+            target:
+              entity_id: !input sonos_players
+            data:
+              is_volume_muted: false
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ master_player_helper }}"
+            data:
+              value: ""
     default: []
