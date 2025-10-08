@@ -225,6 +225,7 @@ condition:
   - condition: template
     value_template: "{{ not use_toggle or is_state(toggle_entity, 'on') }}"
 
+
 action:
   - choose:
       # When only one player starts playing → set master
@@ -245,8 +246,10 @@ action:
           - condition: trigger
             id: all_rooms_off_delayed
           - condition: template
-            value_template: "{{ presence_sensors | select('is_state', 'on') | list | length == 0 }}"
+            value_template: "{{ expand(presence_sensors) | selectattr('state', 'eq', 'on') | list | length == 0 }}"
         sequence:
+          - condition: template
+            value_template: "{{ expand(presence_sensors) | selectattr('state', 'eq', 'on') | list | length == 0 }}"
           - service: media_player.media_stop
             target:
               entity_id: "{{ states(master_player_helper) }}"
@@ -267,6 +270,8 @@ action:
               {% set master = states(master_player_helper) %}
               {{ player == master }}
         sequence:
+          - condition: template
+            value_template: "{{ is_state(trigger.entity_id, 'off') }}"
           - service: media_player.volume_mute
             target:
               entity_id: "{{ states(master_player_helper) }}"
@@ -333,6 +338,8 @@ action:
               {% set master = states(master_player_helper) %}
               {{ player != master and player in (state_attr(master, 'group_members') or []) }}
         sequence:
+          - condition: template
+            value_template: "{{ is_state(trigger.entity_id, 'off') }}"
           - service: media_player.unjoin
             target:
               entity_id: "{{ mapping[trigger.entity_id] }}"
@@ -344,6 +351,8 @@ action:
           - condition: template
             value_template: "{{ set_volume_enabled }}"
         sequence:
+          - condition: template
+            value_template: "{{ is_state(trigger.entity_id, 'off') }}"
           - service: media_player.volume_set
             target:
               entity_id: >
@@ -361,6 +370,8 @@ action:
               {% set master = states(master_player_helper) %}
               {{ trigger.entity_id == master }}
         sequence:
+          - condition: template
+            value_template: "{{ is_state(trigger.entity_id, 'paused') }}"
           - service: media_player.unjoin
             target:
               entity_id: >
