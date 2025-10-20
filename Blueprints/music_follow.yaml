@@ -3,22 +3,22 @@ blueprint:
   description: |
     🔊 **Automatically have your Sonos speakers follow you from room to room!**
 
-    This blueprint intelligently groups and ungroups your selected Sonos speakers based on where you are in your home.
+    This automation dynamically manages Sonos speaker groups based on room presence sensors.
 
     - 🏠 When you enter a room, that room’s speaker joins the active music group.
     - 🚪 When you leave a room, its speaker unjoins after a delay.
-    - 🔇 If you leave the room of your **master speaker**, it will mute itself instead of unjoining — keeping your queue alive!
+    - 🔇 Leaving the master room mutes it instead of unjoining (to preserve queue).
     - 📺 Players currently playing TV audio will never be grouped, so you won’t accidentally merge your TV and music.
     - 💤 When all presence sensors show nobody home for a while, playback stops and the group resets.
     - 🔁 If all players have stopped playing for a while, the group resets automatically and the master unmutes.
 
     ---
     <details>
-    <summary><b>🛠 How it works</b></summary>
+    <summary><b>🛠 How to use</b></summary>
 
     - Select your Sonos speakers and match them with one presence sensor each.
     - Use an `input_text` helper to store the master player.
-    - Optionally set delays for unjoining, volume lowering, and group reset.
+    - Set values for the different options given and you're good to go!
     </details>
 
   domain: automation
@@ -42,8 +42,11 @@ blueprint:
         Select one presence sensor per room, matching the order of your speakers above.
       selector:
         entity:
+          filter:
+            domain: 
+              - binary_sensor
+              - group
           multiple: true
-          domain: binary_sensor
 
     master_player_helper:
       name: 🗂️ Master Player Helper (`input_text`)
@@ -92,36 +95,6 @@ blueprint:
           max: 1800
           unit_of_measurement: seconds
 
-    set_volume_enabled:
-      name: 🔉 Set Volume for empty rooms?
-      description: >
-        If enabled, the speakers will be set to a given volume level after a room has been empty for a set amount of time.
-      default: false
-      selector:
-        boolean:
-
-    set_volume_level:
-      name: 🎚️ Volume Level After Room Empty
-      description: >
-        What volume (0.0–1.0) to set for speakers after room is empty.
-      default: 0.2
-      selector:
-        number:
-          min: 0
-          max: 1
-          step: 0.01
-
-    set_volume_delay:
-      name: ⏳ Delay Before Setting Volume (seconds)
-      description: >
-        How long to wait before setting the volume for a vacated room.
-      default: 300
-      selector:
-        number:
-          min: 10
-          max: 3600
-          unit_of_measurement: seconds
-
     pause_reset_delay:
       name: ⏹️ Pause Reset Delay (seconds)
       description: >
@@ -144,6 +117,46 @@ blueprint:
           max: 1800
           unit_of_measurement: seconds
 
+    fade_in_enabled:
+      name: 🎧 Enable Volume Fade-in?
+      description: >
+        Enable volume fade-in on new room join or master unmute.
+      default: false
+      selector:
+        boolean:
+
+    fade_in_duration:
+      name: ⏳ Fade-in Duration (seconds)
+      description: >
+        How long the fade-in takes.
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 60
+          unit_of_measurement: seconds
+
+    fade_in_target:
+      name: 🎚️Default Target Volume Level
+      description: >
+        Default volume level target for the fade-in.
+      default: 0.12
+      selector:
+        number:
+          min: 0
+          max: 1
+          step: 0.01
+
+    fade_in_targets:
+      name: 🎚️ Individual Fade-In Volume-Targets
+      description: >
+        JSON mapping of media_player entity IDs to comfortable listening volume levels.
+        These values will be used for the fade-in functionality, effectively overwriting the default value above for each speaker specified.
+        Example: `{"media_player.livingroom":0.25,"media_player.bedroom":0.15}` 
+      default: '{}'
+      selector:
+        text:
+
 mode: queued
 max: 10
 
@@ -153,33 +166,27 @@ variables:
   master_player_helper: !input master_player_helper
   use_toggle: !input use_toggle_helper
   toggle_entity: !input toggle_helper
-  mapping: |
+  mapping: >
     {% set sensors = presence_sensors %}
     {% set players = sonos_players %}
     {{ dict(zip(sensors, players)) }}
-  set_volume_enabled: !input set_volume_enabled
-  set_volume_level: !input set_volume_level
+  fade_in_enabled: !input fade_in_enabled
+  fade_in_targets: "{{ (fade_in_targets_raw | from_json) if fade_in_targets_raw else {} }}"
+  fade_in_targets_raw: !input fade_in_targets
+  fade_in_target: !input fade_in_target
+  fade_in_duration: !input fade_in_duration
 
 trigger:
-  # Trigger when any Sonos player starts playing
   - platform: state
     entity_id: !input sonos_players
     to: 'playing'
     id: media_player_playing
 
-  # When any presence sensor turns ON
   - platform: state
     entity_id: !input presence_sensors
     to: 'on'
     id: sensor_on
 
-  # When any presence sensor turns OFF
-  - platform: state
-    entity_id: !input presence_sensors
-    to: 'off'
-    id: sensor_off
-
-  # When any sensor stays OFF for presence_off_delay
   - platform: state
     entity_id: !input presence_sensors
     to: 'off'
@@ -187,7 +194,6 @@ trigger:
       seconds: !input presence_off_delay
     id: sensor_off_delayed
 
-  # When all sensors OFF for whole house vacant delay
   - platform: state
     entity_id: !input presence_sensors
     to: 'off'
@@ -195,15 +201,7 @@ trigger:
       seconds: !input all_rooms_off_delay
     id: all_rooms_off_delayed
 
-  # Optional: set volume after room empty for set_volume_delay
-  - platform: state
-    entity_id: !input presence_sensors
-    to: 'off'
-    for:
-      seconds: !input set_volume_delay
-    id: set_volume
-    
-  # When master has been paused for x seconds → reset group
+
   - platform: state
     entity_id: !input sonos_players
     to: 'paused'
@@ -211,29 +209,19 @@ trigger:
       seconds: !input pause_reset_delay
     id: paused_delayed
 
-  # When all players are not playing anymore, reset group after given delay
-  - platform: template
-    value_template: >
-      {% set inactive_states = ['idle', 'off', 'paused'] %}
-      {% set inactive_players = expand(sonos_players) | selectattr('state', 'in', inactive_states) | list %}
-      {{ inactive_players | length == sonos_players | length }}
-    for:
-      seconds: !input group_reset_delay
-    id: group_reset
-
 condition:
   - condition: template
     value_template: "{{ not use_toggle or is_state(toggle_entity, 'on') }}"
 
-
 action:
   - choose:
-      # When only one player starts playing → set master
+      # Set master if only one player is playing
       - conditions:
           - condition: trigger
             id: media_player_playing
           - condition: template
-            value_template: "{{ expand(sonos_players) | selectattr('state', 'eq', 'playing') | list | length == 1 }}"
+            value_template: >
+              {{ expand(sonos_players) | selectattr('state', 'eq', 'playing') | list | length == 1 }}
         sequence:
           - service: input_text.set_value
             target:
@@ -241,15 +229,112 @@ action:
             data:
               value: "{{ trigger.entity_id }}"
 
-      # When all rooms empty → stop master
+      # Master room occupied → unmute master + fade-in
+      - conditions:
+          - condition: trigger
+            id: sensor_on
+          - condition: template
+            value_template: >
+              {% set player = mapping[trigger.entity_id] %}
+              {% set master = states(master_player_helper) %}
+              {{ player == master }}
+        sequence:
+          - variables:
+              master: "{{ states(master_player_helper) }}"
+              fade_in_targets_raw: !input fade_in_targets
+              fade_in_targets: "{{ (fade_in_targets_raw | from_json) if fade_in_targets_raw else {} }}"
+              current_volume: "{{ state_attr(master, 'volume_level') | default(0) }}"
+              target_vol: "{{ fade_in_targets.get(master, fade_in_target | float) }}"
+              is_muted: "{{ state_attr(master, 'is_volume_muted') }}"
+          - service: media_player.volume_mute
+            target:
+              entity_id: "{{ master }}"
+            data:
+              is_volume_muted: false
+          - condition: template
+            value_template: >
+              {{ fade_in_enabled and (is_muted or current_volume < (target_vol * 0.9)) }}
+          - service: media_player.volume_set
+            target:
+              entity_id: "{{ master }}"
+            data:
+              volume_level: 0
+          - variables:
+              fade_in_steps: "{{ fade_in_duration * 2 }}"
+              step_vol: "{{ target_vol / fade_in_steps }}"
+          - repeat:
+              count: "{{ fade_in_steps | int }}"
+              sequence:
+                - service: media_player.volume_set
+                  target:
+                    entity_id: "{{ master }}"
+                  data:
+                    volume_level: "{{ repeat.index * step_vol }}"
+                - delay: "00:00:00.5"
+
+      # Non-master room occupied → join group + fade-in
+      - conditions:
+          - condition: trigger
+            id: sensor_on
+          - condition: template
+            value_template: >
+              {% set player = mapping[trigger.entity_id] %}
+              {% set master = states(master_player_helper) %}
+              {{ player != master and states(master) in ['playing','paused'] }}
+        sequence:
+          - variables:
+              new_player: "{{ mapping[trigger.entity_id] }}"
+              master: "{{ states(master_player_helper) }}"
+              current_group: "{{ state_attr(master, 'group_members') or [master] }}"
+          - if:
+              - condition: template
+                value_template: "{{ new_player not in current_group }}"
+            then:
+              - if:
+                  - condition: template
+                    value_template: "{{ fade_in_enabled }}"
+                then:
+                  - service: media_player.volume_set
+                    target:
+                      entity_id: "{{ new_player }}"
+                    data:
+                      volume_level: 0
+                  - service: media_player.join
+                    data:
+                      entity_id: "{{ master }}"
+                      group_members: ["{{ new_player }}"]
+                  - wait_template: "{{ new_player in state_attr(master, 'group_members') }}"
+                    timeout: 10
+                    continue_on_timeout: true
+                  - variables:
+                      fade_in_steps: "{{ fade_in_duration * 2 }}"
+                      fade_in_targets_raw: !input fade_in_targets
+                      fade_in_targets: "{{ (fade_in_targets_raw | from_json) if fade_in_targets_raw else {} }}"
+                      target_vol: "{{ fade_in_targets.get(new_player, fade_in_target | float) }}"
+                      step_vol: "{{ target_vol / fade_in_steps }}"
+                  - repeat:
+                      count: "{{ fade_in_steps | int }}"
+                      sequence:
+                        - service: media_player.volume_set
+                          target:
+                            entity_id: "{{ new_player }}"
+                          data:
+                            volume_level: "{{ repeat.index * step_vol }}"
+                        - delay: "00:00:00.5"
+                else:
+                  - service: media_player.join
+                    data:
+                      entity_id: "{{ master }}"
+                      group_members: ["{{ new_player }}"]
+
+      # When all rooms empty → stop master and clear
       - conditions:
           - condition: trigger
             id: all_rooms_off_delayed
           - condition: template
-            value_template: "{{ expand(presence_sensors) | selectattr('state', 'eq', 'on') | list | length == 0 }}"
+            value_template: >
+              {{ expand(presence_sensors) | selectattr('state', 'eq', 'on') | list | length == 0 }}
         sequence:
-          - condition: template
-            value_template: "{{ expand(presence_sensors) | selectattr('state', 'eq', 'on') | list | length == 0 }}"
           - service: media_player.media_stop
             target:
               entity_id: "{{ states(master_player_helper) }}"
@@ -265,67 +350,15 @@ action:
             id: sensor_off_delayed
           - condition: template
             value_template: >
-              {% set mapping_dict = mapping %}
-              {% set player = mapping_dict[trigger.entity_id] %}
+              {% set player = mapping[trigger.entity_id] %}
               {% set master = states(master_player_helper) %}
               {{ player == master }}
         sequence:
-          - condition: template
-            value_template: "{{ is_state(trigger.entity_id, 'off') }}"
           - service: media_player.volume_mute
             target:
               entity_id: "{{ states(master_player_helper) }}"
             data:
               is_volume_muted: true
-
-      # Master room occupied → unmute master
-      - conditions:
-          - condition: trigger
-            id: sensor_on
-          - condition: template
-            value_template: >
-              {% set mapping_dict = mapping %}
-              {% set player = mapping_dict[trigger.entity_id] %}
-              {% set master = states(master_player_helper) %}
-              {{ player == master }}
-        sequence:
-          - service: media_player.volume_mute
-            target:
-              entity_id: "{{ states(master_player_helper) }}"
-            data:
-              is_volume_muted: false
-
-      # Non-master room occupied → join to master if needed
-      - conditions:
-          - condition: trigger
-            id: sensor_on
-          - condition: template
-            value_template: >
-              {% set mapping_dict = mapping %}
-              {% set player = mapping_dict[trigger.entity_id] %}
-              {% set master = states(master_player_helper) %}
-              {{ player != master and states(master) in ['playing', 'paused'] }}
-        sequence:
-          - variables:
-              mapping_dict: "{{ mapping }}"
-              master: "{{ states(master_player_helper) }}"
-              new_player: "{{ mapping[trigger.entity_id] }}"
-              current_group: "{{ state_attr(master, 'group_members') or [master] }}"
-          - if:
-              - condition: template
-                value_template: "{{ new_player not in current_group }}"
-            then:
-              - if:
-                  - condition: template
-                    value_template: "{{ state_attr(new_player, 'media_content_type') != 'tv' }}"
-                then:
-                  - service: media_player.join
-                    data:
-                      entity_id: "{{ master }}"
-                      group_members: "{{ [new_player] }}"
-                  - wait_template: "{{ new_player in state_attr(master, 'group_members') }}"
-                    timeout: 10
-                    continue_on_timeout: true
 
       # Non-master room empty → unjoin that player
       - conditions:
@@ -333,33 +366,14 @@ action:
             id: sensor_off_delayed
           - condition: template
             value_template: >
-              {% set mapping_dict = mapping %}
-              {% set player = mapping_dict[trigger.entity_id] %}
+              {% set player = mapping[trigger.entity_id] %}
               {% set master = states(master_player_helper) %}
               {{ player != master and player in (state_attr(master, 'group_members') or []) }}
         sequence:
-          - condition: template
-            value_template: "{{ is_state(trigger.entity_id, 'off') }}"
           - service: media_player.unjoin
             target:
               entity_id: "{{ mapping[trigger.entity_id] }}"
 
-      # Optional: set volume after set_volume_level
-      - conditions:
-          - condition: trigger
-            id: set_volume
-          - condition: template
-            value_template: "{{ set_volume_enabled }}"
-        sequence:
-          - condition: template
-            value_template: "{{ is_state(trigger.entity_id, 'off') }}"
-          - service: media_player.volume_set
-            target:
-              entity_id: >
-                {% set mapping_dict = mapping %}
-                {{ mapping_dict[trigger.entity_id] }}
-            data:
-              volume_level: "{{ set_volume_level }}"
 
       # Master paused for too long → reset group
       - conditions:
@@ -367,11 +381,8 @@ action:
             id: paused_delayed
           - condition: template
             value_template: >
-              {% set master = states(master_player_helper) %}
-              {{ trigger.entity_id == master }}
+              {{ trigger.entity_id == states(master_player_helper) }}
         sequence:
-          - condition: template
-            value_template: "{{ is_state(trigger.entity_id, 'paused') }}"
           - service: media_player.unjoin
             target:
               entity_id: >
@@ -409,4 +420,3 @@ action:
               entity_id: "{{ master_player_helper }}"
             data:
               value: ""
-    default: []
