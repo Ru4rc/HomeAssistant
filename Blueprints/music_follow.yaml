@@ -157,8 +157,8 @@ blueprint:
       selector:
         text:
 
-mode: queued
-max: 10
+mode: parallel
+max: 5
 
 variables:
   sonos_players: !input sonos_players
@@ -258,7 +258,7 @@ action:
             target:
               entity_id: "{{ master }}"
             data:
-              volume_level: 0
+              volume_level: 0.1
           - variables:
               fade_in_steps: "{{ fade_in_duration * 2 }}"
               step_vol: "{{ target_vol / fade_in_steps }}"
@@ -298,14 +298,16 @@ action:
                     target:
                       entity_id: "{{ new_player }}"
                     data:
-                      volume_level: 0
+                      volume_level: 0.01
+                  - delay: "00:00:01"
                   - service: media_player.join
                     data:
                       entity_id: "{{ master }}"
                       group_members: ["{{ new_player }}"]
                   - wait_template: "{{ new_player in state_attr(master, 'group_members') }}"
-                    timeout: 10
+                    timeout: 15
                     continue_on_timeout: true
+                  - delay: "00:00:01"
                   - variables:
                       fade_in_steps: "{{ fade_in_duration * 2 }}"
                       fade_in_targets_raw: !input fade_in_targets
